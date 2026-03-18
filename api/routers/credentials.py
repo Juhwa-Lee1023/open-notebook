@@ -26,12 +26,9 @@ from pydantic import SecretStr
 
 from api.credentials_service import (
     credential_to_response,
-    discover_with_config,
     migrate_from_env as svc_migrate_from_env,
     migrate_from_provider_config as svc_migrate_from_provider_config,
-    register_models,
     require_encryption_key,
-    test_credential as svc_test_credential,
     validate_url,
 )
 from api.credentials_service import (
@@ -49,6 +46,7 @@ from api.models import (
     UpdateCredentialRequest,
 )
 from open_notebook.domain.credential import Credential
+from open_notebook.security_policy import external_network_feature_disabled
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
@@ -313,35 +311,19 @@ async def delete_credential(
 @router.post("/{credential_id}/test")
 async def test_credential(credential_id: str):
     """Test connection using this credential's configuration."""
-    return await svc_test_credential(credential_id)
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Credential connection testing"),
+    )
 
 
 @router.post("/{credential_id}/discover", response_model=DiscoverModelsResponse)
 async def discover_models_for_credential(credential_id: str):
     """Discover available models using this credential's API key."""
-    try:
-        cred = await Credential.get(credential_id)
-        config = cred.to_esperanto_config()
-        provider = cred.provider.lower()
-
-        discovered = await discover_with_config(provider, config)
-
-        return DiscoverModelsResponse(
-            credential_id=cred.id or "",
-            provider=provider,
-            discovered=[
-                DiscoveredModelResponse(
-                    name=d["name"],
-                    provider=d["provider"],
-                    description=d.get("description"),
-                )
-                for d in discovered
-            ],
-        )
-
-    except Exception as e:
-        logger.error(f"Error discovering models for credential {credential_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to discover models")
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Credential-based model discovery"),
+    )
 
 
 @router.post("/{credential_id}/register-models", response_model=RegisterModelsResponse)
@@ -349,12 +331,12 @@ async def register_models_for_credential(
     credential_id: str, request: RegisterModelsRequest
 ):
     """Register discovered models and link them to this credential."""
-    try:
-        result = await register_models(credential_id, request.models)
-        return RegisterModelsResponse(**result)
-    except Exception as e:
-        logger.error(f"Error registering models for credential {credential_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to register models")
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled(
+            "Provider model discovery registration"
+        ),
+    )
 
 
 # =============================================================================

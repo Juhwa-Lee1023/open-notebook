@@ -2,21 +2,40 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDebounce } from 'use-debounce'
 import { sourcesApi } from '@/lib/api/sources'
 import { SourceListResponse } from '@/lib/types/api'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AppShell } from '@/components/layout/AppShell'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown } from 'lucide-react'
+import {
+  FileText,
+  Link as LinkIcon,
+  Upload,
+  AlignLeft,
+  Trash2,
+  ArrowUpDown,
+  Search,
+} from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
+
+type SourceFilterType = 'all' | 'link' | 'file' | 'text'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
@@ -25,12 +44,15 @@ export default function SourcesPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sourceTypeFilter, setSourceTypeFilter] = useState<SourceFilterType>('all')
   const [sortBy, setSortBy] = useState<'created' | 'updated'>('updated')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; source: SourceListResponse | null }>({
     open: false,
     source: null
   })
+  const [debouncedSearchTerm] = useDebounce(searchTerm, 300)
   const router = useRouter()
   const tableRef = useRef<HTMLTableElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -38,6 +60,11 @@ export default function SourcesPage() {
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
   const PAGE_SIZE = 30
+  const hasActiveFilters = debouncedSearchTerm.trim().length > 0 || sourceTypeFilter !== 'all'
+  const searchPlaceholder = `${t.common.title}...`
+  const emptyStateDescription = debouncedSearchTerm.trim().length > 0
+    ? t.common.tryDifferentSearch
+    : t.sources.allSourcesDescShort
 
   const fetchSources = useCallback(async (reset = false) => {
     try {
@@ -59,6 +86,8 @@ export default function SourcesPage() {
       const data = await sourcesApi.list({
         limit: PAGE_SIZE,
         offset: offsetRef.current,
+        search: debouncedSearchTerm.trim() || undefined,
+        source_type: sourceTypeFilter === 'all' ? undefined : sourceTypeFilter,
         sort_by: sortBy,
         sort_order: sortOrder,
       })
@@ -82,13 +111,13 @@ export default function SourcesPage() {
       setLoadingMore(false)
       loadingMoreRef.current = false
     }
-  }, [sortBy, sortOrder, t.sources.failedToLoad])
+  }, [debouncedSearchTerm, sortBy, sortOrder, sourceTypeFilter, t.sources.failedToLoad])
 
   // Initial load and when sort changes
   useEffect(() => {
     fetchSources(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, sortOrder])
+  }, [debouncedSearchTerm, sortBy, sortOrder, sourceTypeFilter])
 
   useEffect(() => {
     // Focus the table when component mounts or sources change
@@ -143,6 +172,15 @@ export default function SourcesPage() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [sources, selectedIndex, router])
+
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (sources.length === 0) {
+        return 0
+      }
+      return Math.min(prev, sources.length - 1)
+    })
+  }, [sources.length])
 
   const scrollToSelectedRow = (index: number) => {
     const scrollContainer = scrollContainerRef.current
@@ -271,18 +309,6 @@ export default function SourcesPage() {
     )
   }
 
-  if (sources.length === 0) {
-    return (
-      <AppShell>
-        <EmptyState
-          icon={FileText}
-          title={t.sources.noSourcesYet}
-          description={t.sources.allSourcesDescShort}
-        />
-      </AppShell>
-    )
-  }
-
   return (
     <AppShell>
       <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
@@ -291,132 +317,169 @@ export default function SourcesPage() {
           <p className="mt-2 text-muted-foreground">
             {t.sources.allSourcesDesc}
           </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="pl-10"
+                autoComplete="off"
+                aria-label={searchPlaceholder}
+              />
+            </div>
+            <Select
+              value={sourceTypeFilter}
+              onValueChange={(value) => setSourceTypeFilter(value as SourceFilterType)}
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder={t.common.type} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t.advanced.rebuild.all}</SelectItem>
+                <SelectItem value="link">{t.sources.type.link}</SelectItem>
+                <SelectItem value="file">{t.sources.type.file}</SelectItem>
+                <SelectItem value="text">{t.sources.type.text}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">
-          <table
-            ref={tableRef}
-            tabIndex={0}
-            className="w-full min-w-[800px] outline-none table-fixed"
-          >
-            <colgroup>
-              <col className="w-[120px]" />
-              <col className="w-auto" />
-              <col className="w-[140px]" />
-              <col className="w-[100px]" />
-              <col className="w-[100px]" />
-              <col className="w-[100px]" />
-            </colgroup>
-            <thead className="sticky top-0 bg-background z-10">
-              <tr className="border-b bg-muted/50">
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                  {t.common.type}
-                </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                  {t.common.title}
-                </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('created')}
-                    className="h-8 px-2 hover:bg-muted"
-                  >
-                    {t.common.created_label}
-                    <ArrowUpDown className={cn(
-                      "ml-2 h-3 w-3",
-                      sortBy === 'created' ? 'opacity-100' : 'opacity-30'
-                    )} />
-                    {sortBy === 'created' && (
-                      <span className="ml-1 text-xs">
-                        {sortOrder === 'asc' ? '↑' : '↓'}
-                      </span>
-                    )}
-                  </Button>
-                </th>
-                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden md:table-cell">
-                  {t.sources.insights}
-                </th>
-                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
-                  {t.sources.embedded}
-                </th>
-                <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                  {t.common.actions}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.map((source, index) => (
-                <tr
-                  key={source.id}
-                  onClick={() => handleRowClick(index, source.id)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={cn(
-                    "border-b transition-colors cursor-pointer",
-                    selectedIndex === index
-                      ? "bg-accent"
-                      : "hover:bg-muted/50"
-                  )}
-                >
-                  <td className="h-12 px-4">
-                    <div className="flex items-center gap-2">
-                      {getSourceIcon(source)}
-                      <Badge variant="secondary" className="text-xs">
-                        {getSourceType(source)}
-                      </Badge>
-                    </div>
-                  </td>
-                  <td className="h-12 px-4">
-                    <div className="flex flex-col overflow-hidden">
-                      <span className="font-medium truncate">
-                        {source.title || t.sources.untitledSource}
-                      </span>
-                      {source.asset?.url && (
-                        <span className="text-xs text-muted-foreground truncate">
-                          {source.asset.url}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
-                    {formatDistanceToNow(new Date(source.created), { 
-                      addSuffix: true,
-                      locale: getDateLocale(language)
-                    })}
-                  </td>
-                  <td className="h-12 px-4 text-center hidden md:table-cell">
-                    <span className="text-sm font-medium">{source.insights_count || 0}</span>
-                  </td>
-                  <td className="h-12 px-4 text-center hidden lg:table-cell">
-                    <Badge variant={source.embedded ? "default" : "secondary"} className="text-xs">
-                      {source.embedded ? t.sources.yes : t.sources.no}
-                    </Badge>
-                  </td>
-                  <td className="h-12 px-4 text-right">
+        {sources.length === 0 ? (
+          <div className="flex-1 rounded-md border">
+            <EmptyState
+              icon={FileText}
+              title={hasActiveFilters ? t.common.noMatches : t.sources.noSourcesYet}
+              description={hasActiveFilters ? emptyStateDescription : t.sources.allSourcesDescShort}
+            />
+          </div>
+        ) : (
+          <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">
+            <table
+              ref={tableRef}
+              tabIndex={0}
+              className="w-full min-w-[800px] outline-none table-fixed"
+            >
+              <colgroup>
+                <col className="w-[120px]" />
+                <col className="w-auto" />
+                <col className="w-[140px]" />
+                <col className="w-[100px]" />
+                <col className="w-[100px]" />
+                <col className="w-[100px]" />
+              </colgroup>
+              <thead className="sticky top-0 bg-background z-10">
+                <tr className="border-b bg-muted/50">
+                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    {t.common.type}
+                  </th>
+                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    {t.common.title}
+                  </th>
+                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
                     <Button
                       variant="ghost"
-                      size="icon"
-                      onClick={(e) => handleDeleteClick(e, source)}
-                      className="text-destructive hover:text-destructive"
+                      size="sm"
+                      onClick={() => toggleSort('created')}
+                      className="h-8 px-2 hover:bg-muted"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {t.common.created_label}
+                      <ArrowUpDown className={cn(
+                        "ml-2 h-3 w-3",
+                        sortBy === 'created' ? 'opacity-100' : 'opacity-30'
+                      )} />
+                      {sortBy === 'created' && (
+                        <span className="ml-1 text-xs">
+                          {sortOrder === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
                     </Button>
-                  </td>
+                  </th>
+                  <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden md:table-cell">
+                    {t.sources.insights}
+                  </th>
+                  <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
+                    {t.sources.embedded}
+                  </th>
+                  <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                    {t.common.actions}
+                  </th>
                 </tr>
-              ))}
-              {loadingMore && (
-                <tr>
-                  <td colSpan={6} className="h-16 text-center">
-                    <div className="flex items-center justify-center">
-                      <LoadingSpinner />
-                      <span className="ml-2 text-muted-foreground">{t.sources.loadingMore}</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sources.map((source, index) => (
+                  <tr
+                    key={source.id}
+                    onClick={() => handleRowClick(index, source.id)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={cn(
+                      "border-b transition-colors cursor-pointer",
+                      selectedIndex === index
+                        ? "bg-accent"
+                        : "hover:bg-muted/50"
+                    )}
+                  >
+                    <td className="h-12 px-4">
+                      <div className="flex items-center gap-2">
+                        {getSourceIcon(source)}
+                        <Badge variant="secondary" className="text-xs">
+                          {getSourceType(source)}
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="h-12 px-4">
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="font-medium truncate">
+                          {source.title || t.sources.untitledSource}
+                        </span>
+                        {source.asset?.url && (
+                          <span className="text-xs text-muted-foreground truncate">
+                            {source.asset.url}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
+                      {formatDistanceToNow(new Date(source.created), { 
+                        addSuffix: true,
+                        locale: getDateLocale(language)
+                      })}
+                    </td>
+                    <td className="h-12 px-4 text-center hidden md:table-cell">
+                      <span className="text-sm font-medium">{source.insights_count || 0}</span>
+                    </td>
+                    <td className="h-12 px-4 text-center hidden lg:table-cell">
+                      <Badge variant={source.embedded ? "default" : "secondary"} className="text-xs">
+                        {source.embedded ? t.sources.yes : t.sources.no}
+                      </Badge>
+                    </td>
+                    <td className="h-12 px-4 text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDeleteClick(e, source)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {loadingMore && (
+                  <tr>
+                    <td colSpan={6} className="h-16 text-center">
+                      <div className="flex items-center justify-center">
+                        <LoadingSpinner />
+                        <span className="ml-2 text-muted-foreground">{t.sources.loadingMore}</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog

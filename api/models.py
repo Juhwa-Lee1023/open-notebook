@@ -262,6 +262,23 @@ class SettingsResponse(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    internal_proxy_enabled: Optional[str] = None
+    internal_proxy_url: Optional[str] = None
+    internal_proxy_auth_type: Optional[str] = None
+    internal_proxy_username: Optional[str] = None
+    internal_proxy_secret: Optional[str] = None
+    internal_jira_direct_enabled: Optional[str] = None
+    internal_jira_base_url: Optional[str] = None
+    internal_jira_auth_type: Optional[str] = None
+    internal_jira_username: Optional[str] = None
+    internal_jira_secret: Optional[str] = None
+    internal_confluence_direct_enabled: Optional[str] = None
+    internal_confluence_base_url: Optional[str] = None
+    internal_confluence_auth_type: Optional[str] = None
+    internal_confluence_username: Optional[str] = None
+    internal_confluence_secret: Optional[str] = None
+    internal_connector_timeout_seconds: Optional[int] = None
+    internal_connector_diagnostic_enabled: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -270,6 +287,23 @@ class SettingsUpdate(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    internal_proxy_enabled: Optional[str] = None
+    internal_proxy_url: Optional[str] = None
+    internal_proxy_auth_type: Optional[str] = None
+    internal_proxy_username: Optional[str] = None
+    internal_proxy_secret: Optional[str] = None
+    internal_jira_direct_enabled: Optional[str] = None
+    internal_jira_base_url: Optional[str] = None
+    internal_jira_auth_type: Optional[str] = None
+    internal_jira_username: Optional[str] = None
+    internal_jira_secret: Optional[str] = None
+    internal_confluence_direct_enabled: Optional[str] = None
+    internal_confluence_base_url: Optional[str] = None
+    internal_confluence_auth_type: Optional[str] = None
+    internal_confluence_username: Optional[str] = None
+    internal_confluence_secret: Optional[str] = None
+    internal_connector_timeout_seconds: Optional[int] = None
+    internal_connector_diagnostic_enabled: Optional[str] = None
 
 
 # Sources API models

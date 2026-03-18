@@ -34,8 +34,48 @@ from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
+from open_notebook.security_policy import (
+    is_restricted_stt_tts_source,
+)
 
 router = APIRouter()
+
+
+def _build_source_filter_clause(
+    search: Optional[str], source_type: str
+) -> tuple[str, dict[str, Any]]:
+    where_clauses: list[str] = []
+    query_params: dict[str, Any] = {}
+
+    normalized_search = search.strip() if search else None
+    if normalized_search:
+        where_clauses.append("title @1@ $search_query")
+        query_params["search_query"] = normalized_search
+
+    if source_type == "link":
+        where_clauses.append("asset.url != NONE")
+    elif source_type == "file":
+        where_clauses.append("asset.file_path != NONE")
+    elif source_type == "text":
+        where_clauses.append(
+            "(asset = NONE OR (asset.url = NONE AND asset.file_path = NONE))"
+        )
+
+    if not where_clauses:
+        return "", query_params
+
+    return f"WHERE {' AND '.join(where_clauses)}", query_params
+
+
+def _validate_source_security(
+    _type: str,
+    file_path: Optional[str] = None,
+) -> None:
+    if file_path and is_restricted_stt_tts_source(file_path):
+        raise HTTPException(
+            status_code=403,
+            detail="Audio and video source processing is disabled by security policy.",
+        )
 
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
@@ -156,6 +196,10 @@ async def get_sources(
         50, ge=1, le=100, description="Number of sources to return (1-100)"
     ),
     offset: int = Query(0, ge=0, description="Number of sources to skip"),
+    search: Optional[str] = Query(None, description="Search source titles"),
+    source_type: str = Query(
+        "all", description="Filter by source type (all, link, file, text)"
+    ),
     sort_by: str = Query(
         "updated", description="Field to sort by (created or updated)"
     ),
@@ -172,9 +216,20 @@ async def get_sources(
             raise HTTPException(
                 status_code=400, detail="sort_order must be 'asc' or 'desc'"
             )
+        if source_type not in ["all", "link", "file", "text"]:
+            raise HTTPException(
+                status_code=400,
+                detail="source_type must be 'all', 'link', 'file', or 'text'",
+            )
 
         # Build ORDER BY clause
         order_clause = f"ORDER BY {sort_by} {sort_order.upper()}"
+        filter_clause, filter_params = _build_source_filter_clause(search, source_type)
+        query_params = {
+            "limit": limit,
+            "offset": offset,
+            **filter_params,
+        }
 
         # Build the query
         if notebook_id:
@@ -189,6 +244,7 @@ async def get_sources(
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM (select value in from reference where out=$notebook_id)
+                {filter_clause}
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -197,8 +253,7 @@ async def get_sources(
                 query,
                 {
                     "notebook_id": ensure_record_id(notebook_id),
-                    "limit": limit,
-                    "offset": offset,
+                    **query_params,
                 },
             )
         else:
@@ -208,11 +263,12 @@ async def get_sources(
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
+                {filter_clause}
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
             """
-            result = await repo_query(query, {"limit": limit, "offset": offset})
+            result = await repo_query(query, query_params)
 
         # Convert result to response model
         # Command data is already fetched via FETCH command clause
@@ -290,6 +346,8 @@ async def create_source(
     file_path = None
 
     try:
+        _validate_source_security(source_data.type, file_path=source_data.file_path)
+
         # Verify all specified notebooks exist (backward compatibility support)
         for notebook_id in source_data.notebooks or []:
             notebook = await Notebook.get(notebook_id)
@@ -325,6 +383,7 @@ async def create_source(
                     status_code=400,
                     detail="File upload or file_path is required for upload type",
                 )
+            _validate_source_security(source_data.type, file_path=final_file_path)
             content_state["file_path"] = final_file_path
             content_state["delete_source"] = source_data.delete_source
         elif source_data.type == "text":
@@ -830,6 +889,7 @@ async def retry_source_processing(source_id: str):
         content_state = {}
         if source.asset:
             if source.asset.file_path:
+                _validate_source_security("upload", file_path=source.asset.file_path)
                 content_state = {
                     "file_path": source.asset.file_path,
                     "delete_source": False,  # Don't delete on retry

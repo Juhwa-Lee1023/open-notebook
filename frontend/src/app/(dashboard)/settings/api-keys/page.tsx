@@ -19,13 +19,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  RefreshCw,
   Key,
   ShieldAlert,
   Plus,
   Edit,
   Trash2,
-  Plug,
   Loader2,
   Check,
   X,
@@ -35,10 +33,9 @@ import {
   Code,
   Mic,
   Volume2,
-  Bot,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults, useTestModel } from '@/lib/hooks/use-models'
+import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults } from '@/lib/hooks/use-models'
 import {
   useCredentials,
   useCredential,
@@ -47,17 +44,22 @@ import {
   useCreateCredential,
   useUpdateCredential,
   useDeleteCredential,
-  useTestCredential,
-  useDiscoverModels,
-  useRegisterModels,
-  useMigrateFromEnv,
 } from '@/lib/hooks/use-credentials'
-import { Credential, CreateCredentialRequest, UpdateCredentialRequest, DiscoveredModel } from '@/lib/api/credentials'
+import { Credential, CreateCredentialRequest, UpdateCredentialRequest } from '@/lib/api/credentials'
 import { Model, ModelDefaults } from '@/lib/types/models'
-import { MigrationBanner, ModelTestResultDialog } from '@/components/settings'
+import { MigrationBanner } from '@/components/settings'
 import { EmbeddingModelChangeDialog } from '@/components/settings/EmbeddingModelChangeDialog'
 
 type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+const VISIBLE_MODEL_TYPES: ModelType[] = ['language', 'embedding']
+
+function isVisibleModelType(type: ModelType) {
+  return VISIBLE_MODEL_TYPES.includes(type)
+}
+
+function getVisibleModelTypes(types: ModelType[]) {
+  return types.filter(isVisibleModelType)
+}
 
 // Provider display names
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -100,23 +102,6 @@ const PROVIDER_MODALITIES: Record<string, ModelType[]> = {
   azure: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
   vertex: ['language', 'embedding', 'text_to_speech'],
   openai_compatible: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
-}
-
-// Documentation links
-const PROVIDER_DOCS: Record<string, string> = {
-  openai: 'https://platform.openai.com/api-keys',
-  anthropic: 'https://console.anthropic.com/settings/keys',
-  google: 'https://aistudio.google.com/app/apikey',
-  groq: 'https://console.groq.com/keys',
-  mistral: 'https://console.mistral.ai/api-keys/',
-  deepseek: 'https://platform.deepseek.com/api_keys',
-  xai: 'https://console.x.ai/',
-  openrouter: 'https://openrouter.ai/keys',
-  voyage: 'https://dash.voyageai.com/api-keys',
-  elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
-  azure: 'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
-  vertex: 'https://cloud.google.com/vertex-ai/docs/start/cloud-environment',
-  openai_compatible: 'https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
 }
 
 const TYPE_ICONS: Record<ModelType, React.ReactNode> = {
@@ -240,8 +225,6 @@ function CredentialFormDialog({
       ? name.trim() !== '' && project.trim() !== '' && location.trim() !== ''
       : name.trim() !== '' && (!requiresApiKey || apiKey.trim() !== '')
 
-  const docsUrl = PROVIDER_DOCS[provider]
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -335,11 +318,9 @@ function CredentialFormDialog({
                 </button>
               </div>
               {isEditing && <p className="text-xs text-muted-foreground">{t.apiKeys.apiKeyEditHint}</p>}
-              {docsUrl && (
-                <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
-                  {t.apiKeys.getApiKey} &rarr;
-                </a>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {t.apiKeys.getApiKey}
+              </p>
             </div>
           )}
 
@@ -371,259 +352,6 @@ function CredentialFormDialog({
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// =============================================================================
-// Model Discovery Dialog
-// =============================================================================
-
-function DiscoverModelsDialog({
-  open,
-  onOpenChange,
-  credential,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  credential: Credential
-}) {
-  const { t } = useTranslation()
-  const discoverModels = useDiscoverModels()
-  const registerModels = useRegisterModels()
-  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([])
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
-  const [hasDiscovered, setHasDiscovered] = useState(false)
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [customModelSelected, setCustomModelSelected] = useState(false)
-  // Model type selector - default to credential's first modality
-  const [selectedType, setSelectedType] = useState<ModelType>(
-    (credential.modalities[0] as ModelType) || 'language'
-  )
-
-  useEffect(() => {
-    if (open && !hasDiscovered) {
-      setDiscoveryError(null)
-      discoverModels.mutate(credential.id, {
-        onSuccess: (result) => {
-          const seen = new Set<string>()
-          const unique = result.discovered.filter(m => {
-            if (seen.has(m.name)) return false
-            seen.add(m.name)
-            return true
-          })
-          setDiscoveredModels(unique)
-          setSelectedModels(new Set())
-          setHasDiscovered(true)
-        },
-        onError: (error: unknown) => {
-          setHasDiscovered(true)
-          const msg = error instanceof Error ? error.message : String(error)
-          setDiscoveryError(msg)
-        },
-      })
-    }
-    if (!open) {
-      setHasDiscovered(false)
-      setDiscoveredModels([])
-      setSelectedModels(new Set())
-      setDiscoveryError(null)
-      setSearchQuery('')
-      setCustomModelSelected(false)
-      setSelectedType((credential.modalities[0] as ModelType) || 'language')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open/close
-  }, [open])
-
-  // Reset custom selection when search changes
-  useEffect(() => {
-    setCustomModelSelected(false)
-  }, [searchQuery])
-
-  // Filter discovered models by search query
-  const filteredModels = useMemo(() => {
-    if (!searchQuery.trim()) return discoveredModels
-    const q = searchQuery.toLowerCase()
-    return discoveredModels.filter(m => m.name.toLowerCase().includes(q))
-  }, [discoveredModels, searchQuery])
-
-  // Show custom model option when search doesn't exactly match any discovered model
-  const showCustomOption = useMemo(() => {
-    if (!searchQuery.trim()) return false
-    const q = searchQuery.trim().toLowerCase()
-    return !discoveredModels.some(m => m.name.toLowerCase() === q)
-  }, [discoveredModels, searchQuery])
-
-  const handleRegister = () => {
-    const selected = discoveredModels
-      .filter(m => selectedModels.has(m.name))
-      .map(m => ({
-        name: m.name,
-        provider: m.provider,
-        model_type: selectedType,
-      }))
-    if (customModelSelected && showCustomOption) {
-      selected.push({
-        name: searchQuery.trim(),
-        provider: credential.provider,
-        model_type: selectedType,
-      })
-    }
-    registerModels.mutate(
-      { credentialId: credential.id, models: selected },
-      { onSuccess: () => onOpenChange(false) }
-    )
-  }
-
-  const totalSelected = selectedModels.size + (customModelSelected && showCustomOption ? 1 : 0)
-
-  const toggleModel = (name: string) => {
-    setSelectedModels(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
-
-  const toggleAll = () => {
-    const filteredNames = filteredModels.map(m => m.name)
-    const allFilteredSelected = filteredNames.every(n => selectedModels.has(n))
-    if (allFilteredSelected) {
-      setSelectedModels(prev => {
-        const next = new Set(prev)
-        filteredNames.forEach(n => next.delete(n))
-        return next
-      })
-    } else {
-      setSelectedModels(prev => {
-        const next = new Set(prev)
-        filteredNames.forEach(n => next.add(n))
-        return next
-      })
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {t.models.discoverModels} - {PROVIDER_DISPLAY_NAMES[credential.provider] || credential.provider}
-          </DialogTitle>
-          <DialogDescription>
-            {credential.name}
-          </DialogDescription>
-        </DialogHeader>
-
-        {discoverModels.isPending ? (
-          <div className="flex items-center justify-center py-12">
-            <LoadingSpinner size="lg" />
-          </div>
-        ) : discoveryError ? (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{discoveryError}</AlertDescription>
-          </Alert>
-        ) : (
-          <div className="space-y-4">
-            {/* Model type selector */}
-            <div className="space-y-2">
-              <Label>{t.models.modelType}</Label>
-              <Select value={selectedType} onValueChange={(v) => setSelectedType(v as ModelType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(PROVIDER_MODALITIES[credential.provider] || credential.modalities as ModelType[]).map(type => (
-                    <SelectItem key={type} value={type}>
-                      <div className="flex items-center gap-2">
-                        {TYPE_ICONS[type]}
-                        {TYPE_LABELS[type]}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">{t.models.modelTypeHint}</p>
-            </div>
-
-            {/* Search input */}
-            <input
-              type="text"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm placeholder:text-muted-foreground"
-              placeholder={t.models.searchOrAddModel}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-
-            {/* Select all / count (only when there are discovered models to select) */}
-            {filteredModels.length > 0 && (
-              <div className="flex items-center justify-between">
-                <Button variant="outline" size="sm" onClick={toggleAll}>
-                  {filteredModels.every(m => selectedModels.has(m.name)) ? t.common.remove : t.common.addSelected}
-                  {' '}({selectedModels.size}/{filteredModels.length})
-                </Button>
-              </div>
-            )}
-
-            {/* Model list */}
-            <div className="space-y-1 max-h-60 overflow-y-auto">
-              {filteredModels.map((model) => (
-                <label
-                  key={model.name}
-                  className="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedModels.has(model.name)}
-                    onChange={() => toggleModel(model.name)}
-                    className="rounded"
-                  />
-                  <span className="truncate">{model.name}</span>
-                  {model.description && model.description !== model.name && (
-                    <span className="text-xs text-muted-foreground truncate">({model.description})</span>
-                  )}
-                </label>
-              ))}
-
-              {/* Custom model option */}
-              {showCustomOption && (
-                <label className={`flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm${filteredModels.length > 0 ? ' border-t mt-1 pt-2' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={customModelSelected}
-                    onChange={() => setCustomModelSelected(prev => !prev)}
-                    className="rounded"
-                  />
-                  <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="truncate">
-                    {t.models.addCustomModel.replace('{name}', searchQuery.trim())}
-                  </span>
-                </label>
-              )}
-
-              {filteredModels.length === 0 && !showCustomOption && (
-                <p className="text-center py-4 text-muted-foreground text-sm">{t.models.noModelsFound}</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t.common.cancel}
-          </Button>
-          <Button
-            onClick={handleRegister}
-            disabled={totalSelected === 0 || registerModels.isPending}
-          >
-            {registerModels.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            {t.common.add} ({totalSelected})
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -748,21 +476,14 @@ function CredentialItem({
   allCredentials: Credential[]
 }) {
   const { t } = useTranslation()
-  const { testCredential, isPending: isTestPending, testResults } = useTestCredential()
-  const { testModel, isPending: isModelTestPending, testingModelId, testResult: modelTestResult, testedModelName, clearResult: clearModelTestResult } = useTestModel()
   const deleteModel = useDeleteModel()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [discoverOpen, setDiscoverOpen] = useState(false)
   // Full credential data needed for edit form
   const { data: fullCredential } = useCredential(editOpen ? credential.id : '')
 
   const linkedModels = models.filter(m => m.credential === credential.id)
   const activeTypes = new Set(linkedModels.map(m => m.type))
-  const testResult = testResults[credential.id]
-
-  // Extract translations used in model badge loops to avoid excessive Proxy accesses
-  const testModelLabel = t.models.testModel
   const deleteModelLabel = t.models.deleteModel
 
   // Check which models are defaults
@@ -774,8 +495,6 @@ function CredentialItem({
       'Tools': defaults.default_tools_model,
       'Large Ctx': defaults.large_context_model,
       'Embedding': defaults.default_embedding_model,
-      'TTS': defaults.default_text_to_speech_model,
-      'STT': defaults.default_speech_to_text_model,
     }
     for (const [slot, modelId] of Object.entries(slotMap)) {
       if (modelId) defaultSlots[modelId] = slot
@@ -789,7 +508,7 @@ function CredentialItem({
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-medium truncate">{credential.name}</span>
             <div className="flex gap-1">
-              {credential.modalities.map(mod => (
+              {getVisibleModelTypes(credential.modalities as ModelType[]).map(mod => (
                 <Badge
                   key={mod}
                   variant="secondary"
@@ -808,28 +527,6 @@ function CredentialItem({
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {testResult && (
-              testResult.success
-                ? <Check className="h-4 w-4 text-emerald-500" />
-                : <X className="h-4 w-4 text-destructive" />
-            )}
-            <Button
-              variant="ghost" size="sm"
-              onClick={() => testCredential(credential.id)}
-              disabled={isTestPending}
-              title={t.apiKeys.testConnection}
-            >
-              {isTestPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-              <span className="hidden sm:inline text-xs">Test</span>
-            </Button>
-            <Button
-              variant="ghost" size="sm"
-              onClick={() => setDiscoverOpen(true)}
-              title={t.apiKeys.syncModels}
-            >
-              <Bot className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs">Models</span>
-            </Button>
             <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)} title={t.common.edit}>
               <Edit className="h-4 w-4" />
             </Button>
@@ -847,7 +544,7 @@ function CredentialItem({
         {/* Linked models grouped by type */}
         {linkedModels.length > 0 && (
           <div className="space-y-1.5 pt-1">
-            {(['language', 'embedding', 'text_to_speech', 'speech_to_text'] as ModelType[])
+            {VISIBLE_MODEL_TYPES
               .filter(type => linkedModels.some(m => m.type === type))
               .map(type => (
                 <div key={type} className="flex items-start gap-1.5">
@@ -869,17 +566,6 @@ function CredentialItem({
                         >
                           {model.name}
                           {defaultSlot && <span className="ml-0.5 opacity-75">({defaultSlot})</span>}
-                          <button
-                            className="ml-0.5 opacity-0 group-hover/model:opacity-60 hover:!opacity-100 transition-opacity"
-                            onClick={() => testModel(model.id, model.name)}
-                            disabled={isModelTestPending && testingModelId === model.id}
-                            title={testModelLabel}
-                          >
-                            {isModelTestPending && testingModelId === model.id
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : <Plug className="h-3 w-3" />
-                            }
-                          </button>
                           <button
                             className="opacity-0 group-hover/model:opacity-60 hover:!opacity-100 hover:text-destructive transition-opacity"
                             onClick={() => deleteModel.mutate(model.id)}
@@ -918,23 +604,6 @@ function CredentialItem({
           allCredentials={allCredentials}
         />
       )}
-
-      {/* Discover models dialog */}
-      {discoverOpen && (
-        <DiscoverModelsDialog
-          open={discoverOpen}
-          onOpenChange={setDiscoverOpen}
-          credential={credential}
-        />
-      )}
-
-      {/* Model test result dialog */}
-      <ModelTestResultDialog
-        open={modelTestResult !== null}
-        onOpenChange={(open) => { if (!open) clearModelTestResult() }}
-        result={modelTestResult}
-        modelName={testedModelName}
-      />
     </>
   )
 }
@@ -962,7 +631,9 @@ function ProviderSection({
   const [addOpen, setAddOpen] = useState(false)
 
   const displayName = PROVIDER_DISPLAY_NAMES[provider] || provider
-  const modalities = PROVIDER_MODALITIES[provider] || ['language']
+  const modalities = getVisibleModelTypes(
+    PROVIDER_MODALITIES[provider] || (['language'] as ModelType[])
+  )
   const hasCredentials = credentials.length > 0
 
   // Models linked to any credential of this provider
@@ -1081,8 +752,6 @@ function DefaultModelSelectors({
   const primaryConfigs: DefaultConfig[] = [
     { key: 'default_chat_model', label: t.models.chatModelLabel, description: t.models.chatModelDesc, modelType: 'language', required: true, id: `${generatedId}-chat` },
     { key: 'default_embedding_model', label: t.models.embeddingModelLabel, description: t.models.embeddingModelDesc, modelType: 'embedding', required: true, id: `${generatedId}-embed` },
-    { key: 'default_text_to_speech_model', label: t.models.ttsModelLabel, description: t.models.ttsModelDesc, modelType: 'text_to_speech', id: `${generatedId}-tts` },
-    { key: 'default_speech_to_text_model', label: t.models.sttModelLabel, description: t.models.sttModelDesc, modelType: 'speech_to_text', id: `${generatedId}-stt` },
   ]
 
   const advancedConfigs: DefaultConfig[] = [
@@ -1148,7 +817,6 @@ function DefaultModelSelectors({
           </Alert>
         )}
 
-        {/* Primary models: Chat, Embedding, TTS, STT */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {primaryConfigs.map(config => {
             const available = getModelsForType(config.modelType)
@@ -1377,16 +1045,8 @@ export default function ApiKeysPage() {
             ))}
           </div>
 
-          {/* Help link */}
-          <div className="border-t pt-4">
-            <a
-              href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-primary hover:underline"
-            >
-              {t.apiKeys.learnMore}
-            </a>
+          <div className="border-t pt-4 text-sm text-muted-foreground">
+            {t.apiKeys.learnMore}
           </div>
         </div>
       </div>

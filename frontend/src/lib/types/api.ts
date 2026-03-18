@@ -58,6 +58,23 @@ export interface SettingsResponse {
   default_embedding_option?: string
   auto_delete_files?: string
   youtube_preferred_languages?: string[]
+  internal_proxy_enabled?: string
+  internal_proxy_url?: string
+  internal_proxy_auth_type?: string
+  internal_proxy_username?: string
+  internal_proxy_secret?: string
+  internal_jira_direct_enabled?: string
+  internal_jira_base_url?: string
+  internal_jira_auth_type?: string
+  internal_jira_username?: string
+  internal_jira_secret?: string
+  internal_confluence_direct_enabled?: string
+  internal_confluence_base_url?: string
+  internal_confluence_auth_type?: string
+  internal_confluence_username?: string
+  internal_confluence_secret?: string
+  internal_connector_timeout_seconds?: number
+  internal_connector_diagnostic_enabled?: string
 }
 
 export interface CreateNotebookRequest {

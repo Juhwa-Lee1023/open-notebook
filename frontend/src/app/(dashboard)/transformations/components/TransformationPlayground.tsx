@@ -127,6 +127,7 @@ export function TransformationPlayground({ transformations, selectedTransformati
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
+                          a: ({ children }) => <span className="text-primary">{children}</span>,
                           table: ({ children }) => (
                             <div className="my-4 overflow-x-auto">
                               <table className="min-w-full border-collapse border border-border">{children}</table>

@@ -10,10 +10,12 @@ from loguru import logger
 from typing_extensions import Annotated, TypedDict
 
 from open_notebook.ai.models import Model, ModelManager
+from open_notebook.connectors.internal_knowledge import resolve_internal_knowledge_url
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.graphs.transformation import graph as transform_graph
+from open_notebook.security_policy import is_restricted_stt_tts_source
 
 
 class SourceState(TypedDict):
@@ -32,27 +34,32 @@ class TransformationState(TypedDict):
 
 
 async def content_process(state: SourceState) -> dict:
-    content_settings = ContentSettings(
-        default_content_processing_engine_doc="auto",
-        default_content_processing_engine_url="auto",
-        default_embedding_option="ask",
-        auto_delete_files="yes",
-        youtube_preferred_languages=[
-            "en",
-            "pt",
-            "es",
-            "de",
-            "nl",
-            "en-GB",
-            "fr",
-            "hi",
-            "ja",
-        ],
-    )
+    content_settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
     content_state: Dict[str, Any] = state["content_state"]  # type: ignore[assignment]
 
+    if is_restricted_stt_tts_source(content_state.get("file_path")):
+        raise ValueError("Audio and video source processing is disabled by security policy.")
+
+    if content_state.get("url"):
+        connector_result = await resolve_internal_knowledge_url(str(content_state["url"]))
+        if connector_result:
+            return {
+                "content_state": ProcessSourceState(
+                    **content_state,
+                    title=connector_result.title or content_state.get("title"),
+                    content=connector_result.content,
+                    url_engine="simple",
+                    output_format="markdown",
+                    metadata={
+                        "source_type": connector_result.source_type,
+                        "connector": "internal",
+                        **(connector_result.metadata or {}),
+                    },
+                )
+            }
+
     content_state["url_engine"] = (
-        content_settings.default_content_processing_engine_url or "auto"
+        content_settings.default_content_processing_engine_url or "simple"
     )
     content_state["document_engine"] = (
         content_settings.default_content_processing_engine_doc or "auto"

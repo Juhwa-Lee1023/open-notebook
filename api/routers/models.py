@@ -1,5 +1,4 @@
 import os
-import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
@@ -14,16 +13,12 @@ from api.models import (
     ProviderAvailabilityResponse,
 )
 from open_notebook.domain.credential import Credential
-from open_notebook.ai.connection_tester import test_individual_model
-from open_notebook.ai.key_provider import provision_provider_keys
 from open_notebook.ai.model_discovery import (
-    discover_provider_models,
     get_provider_model_count,
-    sync_all_providers,
-    sync_provider_models,
 )
 from open_notebook.ai.models import DefaultModels, Model
 from open_notebook.exceptions import InvalidInputError
+from open_notebook.security_policy import external_network_feature_disabled
 
 router = APIRouter()
 
@@ -266,24 +261,10 @@ async def delete_model(model_id: str):
 @router.post("/models/{model_id}/test", response_model=ModelTestResponse)
 async def test_model(model_id: str):
     """Test if a specific model is correctly configured and functional."""
-    try:
-        model = await Model.get(model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail="Model not found")
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=404, detail="Model not found")
-
-    try:
-        success, message = await test_individual_model(model)
-        return ModelTestResponse(success=success, message=message)
-    except Exception as e:
-        logger.error(f"Error testing model {model_id}: {traceback.format_exc()}")
-        return ModelTestResponse(
-            success=False,
-            message=str(e)[:200],
-        )
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Model connection testing"),
+    )
 
 
 @router.get("/models/defaults", response_model=DefaultModelsResponse)
@@ -489,24 +470,10 @@ async def discover_models(provider: str):
     but does not save them to the database. Use the sync endpoint
     to both discover and register models.
     """
-    try:
-        # Provision DB-stored credentials into env vars before discovery
-        await provision_provider_keys(provider)
-        discovered = await discover_provider_models(provider)
-        return [
-            DiscoveredModelResponse(
-                name=m.name,
-                provider=m.provider,
-                model_type=m.model_type,
-                description=m.description,
-            )
-            for m in discovered
-        ]
-    except Exception as e:
-        logger.error(f"Error discovering models for {provider}: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Error discovering models. Check server logs for details."
-        )
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Provider model discovery"),
+    )
 
 
 @router.post("/models/sync/{provider}", response_model=ProviderSyncResponse)
@@ -519,21 +486,10 @@ async def sync_models(provider: str):
 
     Returns counts of discovered, new, and existing models.
     """
-    try:
-        # Provision DB-stored credentials into env vars before discovery
-        await provision_provider_keys(provider)
-        discovered, new, existing = await sync_provider_models(
-            provider, auto_register=True
-        )
-        return ProviderSyncResponse(
-            provider=provider,
-            discovered=discovered,
-            new=new,
-            existing=existing,
-        )
-    except Exception as e:
-        logger.error(f"Error syncing models for {provider}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error syncing models. Check server logs for details.")
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Provider model synchronization"),
+    )
 
 
 @router.post("/models/sync", response_model=AllProvidersSyncResponse)
@@ -545,33 +501,10 @@ async def sync_all_models():
     valid API keys configured. This is useful for initial setup
     or periodic refresh of available models.
     """
-    try:
-        results = await sync_all_providers()
-
-        response_results = {}
-        total_discovered = 0
-        total_new = 0
-
-        for provider, (discovered, new, existing) in results.items():
-            response_results[provider] = ProviderSyncResponse(
-                provider=provider,
-                discovered=discovered,
-                new=new,
-                existing=existing,
-            )
-            total_discovered += discovered
-            total_new += new
-
-        return AllProvidersSyncResponse(
-            results=response_results,
-            total_discovered=total_discovered,
-            total_new=total_new,
-        )
-    except Exception as e:
-        logger.error(f"Error syncing all models: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error syncing all models: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=403,
+        detail=external_network_feature_disabled("Global model synchronization"),
+    )
 
 
 @router.get("/models/count/{provider}", response_model=ProviderModelCountResponse)

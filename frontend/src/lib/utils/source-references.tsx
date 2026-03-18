@@ -303,11 +303,11 @@ export function createReferenceLinkComponent(
       )
     }
 
-    // Regular link - open in new tab
+    // Regular link display is intentionally not clickable under security hardening.
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...props} className="text-primary hover:underline">
+      <span {...props} className="text-primary">
         {children}
-      </a>
+      </span>
     )
   }
 
@@ -461,11 +461,11 @@ export function createCompactReferenceLinkComponent(
       )
     }
 
-    // Regular link - open in new tab
+    // Regular link display is intentionally not clickable under security hardening.
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...props} className="text-primary hover:underline">
+      <span {...props} className="text-primary">
         {children}
-      </a>
+      </span>
     )
   }
 

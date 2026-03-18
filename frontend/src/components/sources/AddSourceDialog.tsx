@@ -213,11 +213,8 @@ export function AddSourceDialog({
         if (!selectedType) return false
         // Check batch size limit
         if (isOverLimit) return false
-        // Check for URL validation errors
         if (urlValidationErrors.length > 0) return false
-
         if (selectedType === 'link') {
-          // In batch mode, check that we have at least one valid URL
           if (isBatchMode) {
             return parsedUrls.length > 0
           }
@@ -247,7 +244,6 @@ export function AddSourceDialog({
     e?.preventDefault()
     e?.stopPropagation()
 
-    // Validate URLs when leaving step 1 in link mode
     if (currentStep === 1 && selectedType === 'link' && watchedUrl) {
       const { invalid } = parseAndValidateUrls(watchedUrl)
       if (invalid.length > 0) {
@@ -262,7 +258,6 @@ export function AddSourceDialog({
     }
   }
 
-  // Clear URL validation errors when user edits
   const handleClearUrlErrors = () => {
     setUrlValidationErrors([])
   }
@@ -322,12 +317,16 @@ export function AddSourceDialog({
   // Batch submission
   const submitBatch = async (data: CreateSourceFormData): Promise<{ success: number; failed: number }> => {
     const results = { success: 0, failed: 0 }
-    const items: { type: 'url' | 'file'; value: string | File }[] = []
+    const items: Array<
+      | { type: 'url'; value: string }
+      | { type: 'file'; value: File }
+    > = []
 
     // Collect items to process
     if (data.type === 'link' && parsedUrls.length > 0) {
       parsedUrls.forEach(url => items.push({ type: 'url', value: url }))
-    } else if (data.type === 'upload' && parsedFiles.length > 0) {
+    }
+    if (data.type === 'upload' && parsedFiles.length > 0) {
       parsedFiles.forEach(file => items.push({ type: 'file', value: file }))
     }
 
@@ -340,9 +339,7 @@ export function AddSourceDialog({
     // Process each item sequentially
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
-      const itemLabel = item.type === 'url'
-        ? (item.value as string).substring(0, 50) + '...'
-        : (item.value as File).name
+      const itemLabel = item.type === 'url' ? item.value : item.value.name
 
       setBatchProgress(prev => prev ? {
         ...prev,
@@ -353,7 +350,7 @@ export function AddSourceDialog({
         const createRequest: CreateSourceRequest = {
           type: item.type === 'url' ? 'link' : 'upload',
           notebooks: selectedNotebooks,
-          url: item.type === 'url' ? item.value as string : undefined,
+          url: item.type === 'url' ? item.value : undefined,
           transformations: selectedTransformations,
           embed: data.embed,
           delete_source: false,
@@ -362,7 +359,7 @@ export function AddSourceDialog({
 
         if (item.type === 'file') {
           const requestWithFile = createRequest as CreateSourceRequest & { file?: File }
-          requestWithFile.file = item.value as File
+          requestWithFile.file = item.value
         }
 
         await createSource.mutateAsync(createRequest)

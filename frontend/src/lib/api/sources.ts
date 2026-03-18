@@ -15,6 +15,8 @@ export const sourcesApi = {
     notebook_id?: string
     limit?: number
     offset?: number
+    search?: string
+    source_type?: 'link' | 'file' | 'text'
     sort_by?: 'created' | 'updated'
     sort_order?: 'asc' | 'desc'
   }) => {

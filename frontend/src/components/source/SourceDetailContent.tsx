@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import ReactMarkdown from 'react-markdown'
@@ -47,11 +47,7 @@ import {
   Link as LinkIcon,
   Upload,
   AlignLeft,
-  ExternalLink,
   Download,
-  Copy,
-  CheckCircle,
-  Youtube,
   MoreVertical,
   Trash2,
   Sparkles,
@@ -91,7 +87,6 @@ export function SourceDetailContent({
   const [loadingInsights, setLoadingInsights] = useState(false)
   const [creatingInsight, setCreatingInsight] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
   const [isDownloadingFile, setIsDownloadingFile] = useState(false)
   const [fileAvailable, setFileAvailable] = useState<boolean | null>(null)
@@ -316,44 +311,6 @@ export function SourceDetailContent({
     return 'text'
   }
 
-  const handleCopyUrl = useCallback(() => {
-    if (source?.asset?.url) {
-      navigator.clipboard.writeText(source.asset.url)
-      setCopied(true)
-      toast.success(t.sources.urlCopied)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }, [source, t])
-
-  const handleOpenExternal = useCallback(() => {
-    if (source?.asset?.url) {
-      window.open(source.asset.url, '_blank')
-    }
-  }, [source])
-
-  const getYouTubeVideoId = (url: string): string | null => {
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-      /youtube\.com\/watch\?.*v=([^&\n?#]+)/
-    ]
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern)
-      if (match) return match[1]
-    }
-    return null
-  }
-
-  const isYouTubeUrl = useMemo(() => {
-    if (!source?.asset?.url) return false
-    return !!(getYouTubeVideoId(source.asset.url))
-  }, [source?.asset?.url])
-
-  const youTubeVideoId = useMemo(() => {
-    if (!source?.asset?.url) return null
-    return getYouTubeVideoId(source.asset.url)
-  }, [source?.asset?.url])
-
   const handleDelete = async () => {
     if (!source) return
 
@@ -476,54 +433,23 @@ export function SourceDetailContent({
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  {isYouTubeUrl && <Youtube className="h-5 w-5" />}
                   {t.sources.content}
                 </CardTitle>
-                {source.asset?.url && !isYouTubeUrl && (
+                {source.asset?.url && (
                   <CardDescription className="flex items-center gap-2">
                     <LinkIcon className="h-4 w-4" />
-                    <a
-                      href={source.asset.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:underline text-blue-600"
-                    >
+                    <span className="break-all text-muted-foreground">
                       {source.asset.url}
-                    </a>
+                    </span>
                   </CardDescription>
                 )}
               </CardHeader>
               <CardContent>
-                {isYouTubeUrl && youTubeVideoId && (
-                  <div className="mb-6">
-                    <div className="aspect-video rounded-lg overflow-hidden bg-black">
-                      <iframe
-                        src={`https://www.youtube.com/embed/${youTubeVideoId}`}
-                        title={t.common.accessibility.ytVideo}
-                        className="w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      />
-                    </div>
-                    {source.asset?.url && (
-                      <div className="mt-2">
-                        <a
-                          href={source.asset.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          {t.sources.openOnYoutube}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                )}
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-blue-600 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                      a: ({ children }) => <span className="text-primary">{children}</span>,
                       p: ({ children }) => <p className="mb-4">{children}</p>,
                       h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4">{children}</h1>,
                       h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-3">{children}</h2>,
@@ -693,27 +619,9 @@ export function SourceDetailContent({
                     <div>
                       <h3 className="mb-2 text-sm font-semibold">{t.common.url}</h3>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 rounded bg-muted px-2 py-1 text-sm">
+                        <code className="flex-1 break-all rounded bg-muted px-2 py-1 text-sm">
                           {source.asset.url}
                         </code>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCopyUrl}
-                        >
-                          {copied ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleOpenExternal}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
                       </div>
                     </div>
                   )}

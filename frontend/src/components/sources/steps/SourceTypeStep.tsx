@@ -1,19 +1,27 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Control, FieldErrors, UseFormRegister, UseFormSetValue, useWatch } from "react-hook-form"
-import { FileIcon, LinkIcon, FileTextIcon } from "lucide-react"
-import { useTranslation } from "@/lib/hooks/use-translation"
-import { FormSection } from "@/components/ui/form-section"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
+import {
+  Control,
+  Controller,
+  FieldErrors,
+  UseFormRegister,
+  UseFormSetValue,
+  useWatch,
+} from "react-hook-form"
+import { FileIcon, FileTextIcon, LinkIcon } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
-import { Controller } from "react-hook-form"
+import { FormSection } from "@/components/ui/form-section"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
+import { useTranslation } from "@/lib/hooks/use-translation"
+import { TranslationKeys } from "@/lib/locales"
 
 interface CreateSourceFormData {
-  type: 'link' | 'upload' | 'text'
+  type: "link" | "upload" | "text"
   title?: string
   url?: string
   content?: string
@@ -24,10 +32,11 @@ interface CreateSourceFormData {
   async_processing: boolean
 }
 
-// Helper functions for batch URL parsing
+const MAX_BATCH_SIZE = 50
+
 function parseUrls(text: string): string[] {
   return text
-    .split('\n')
+    .split("\n")
     .map(line => line.trim())
     .filter(line => line.length > 0)
 }
@@ -45,13 +54,13 @@ export function parseAndValidateUrls(text: string): {
   valid: string[]
   invalid: { url: string; line: number }[]
 } {
-  const lines = text.split('\n')
+  const lines = text.split("\n")
   const valid: string[] = []
   const invalid: { url: string; line: number }[] = []
 
   lines.forEach((line, index) => {
     const trimmed = line.trim()
-    if (trimmed.length === 0) return // skip empty lines
+    if (trimmed.length === 0) return
 
     if (validateUrl(trimmed)) {
       valid.push(trimmed)
@@ -63,23 +72,21 @@ export function parseAndValidateUrls(text: string): {
   return { valid, invalid }
 }
 
-import { TranslationKeys } from '@/lib/locales'
-
 const getSourceTypes = (t: TranslationKeys) => [
   {
-    value: 'link' as const,
+    value: "link" as const,
     label: t.sources.addUrl,
     icon: LinkIcon,
     description: t.sources.processDescription,
   },
   {
-    value: 'upload' as const,
+    value: "upload" as const,
     label: t.sources.uploadFile,
     icon: FileIcon,
     description: t.sources.processDescription,
   },
   {
-    value: 'text' as const,
+    value: "text" as const,
     label: t.sources.enterText,
     icon: FileTextIcon,
     description: t.sources.processDescription,
@@ -95,64 +102,66 @@ interface SourceTypeStepProps {
   onClearUrlErrors?: () => void
 }
 
-const MAX_BATCH_SIZE = 50
-
-export function SourceTypeStep({ control, register, setValue, errors, urlValidationErrors, onClearUrlErrors }: SourceTypeStepProps) {
+export function SourceTypeStep({
+  control,
+  register,
+  setValue,
+  errors,
+  urlValidationErrors,
+  onClearUrlErrors,
+}: SourceTypeStepProps) {
   const { t } = useTranslation()
-  // Watch the selected type and inputs to detect batch mode
-  const selectedType = useWatch({ control, name: 'type' })
-  const urlInput = useWatch({ control, name: 'url' })
-  const fileInput = useWatch({ control, name: 'file' })
-
-  // Track if HTML content was pasted
+  const selectedType = useWatch({ control, name: "type" })
+  const urlInput = useWatch({ control, name: "url" })
+  const fileInput = useWatch({ control, name: "file" })
   const [hasHtmlContent, setHasHtmlContent] = useState(false)
 
-  // Handle paste event to check for HTML content in clipboard
   const handleTextPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const htmlContent = event.clipboardData.getData('text/html')
+    const htmlContent = event.clipboardData.getData("text/html")
 
-    // If HTML content is available, use it instead of plain text
     if (htmlContent) {
       event.preventDefault()
-      // Get current content and cursor position
       const textarea = event.currentTarget
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       const currentValue = textarea.value
-
-      // Insert HTML content at cursor position (replacing selection if any)
-      const newValue = currentValue.substring(0, start) + htmlContent + currentValue.substring(end)
-      setValue('content', newValue, { shouldValidate: true })
+      const newValue =
+        currentValue.substring(0, start) +
+        htmlContent +
+        currentValue.substring(end)
+      setValue("content", newValue, { shouldValidate: true })
       setHasHtmlContent(true)
     } else {
-      // Plain text paste - clear the HTML indicator
       setHasHtmlContent(false)
     }
   }
 
-  // Batch mode detection
   const { isBatchMode, itemCount, urlCount, fileCount } = useMemo(() => {
-    let urlCount = 0
-    let fileCount = 0
+    let nextUrlCount = 0
+    let nextFileCount = 0
 
-    if (selectedType === 'link' && urlInput) {
-      const urls = parseUrls(urlInput)
-      urlCount = urls.length
+    if (selectedType === "link" && urlInput) {
+      nextUrlCount = parseUrls(urlInput).length
     }
 
-    if (selectedType === 'upload' && fileInput) {
+    if (selectedType === "upload" && fileInput) {
       const fileList = fileInput as FileList
-      fileCount = fileList?.length || 0
+      nextFileCount = fileList?.length || 0
     }
 
-    const isBatchMode = urlCount > 1 || fileCount > 1
-    const itemCount = selectedType === 'link' ? urlCount : fileCount
+    const nextIsBatchMode = nextUrlCount > 1 || nextFileCount > 1
+    const nextItemCount = selectedType === "link" ? nextUrlCount : nextFileCount
 
-    return { isBatchMode, itemCount, urlCount, fileCount }
-  }, [selectedType, urlInput, fileInput])
+    return {
+      isBatchMode: nextIsBatchMode,
+      itemCount: nextItemCount,
+      urlCount: nextUrlCount,
+      fileCount: nextFileCount,
+    }
+  }, [fileInput, selectedType, urlInput])
 
-  // Check for batch size limit
   const isOverLimit = itemCount > MAX_BATCH_SIZE
+
   return (
     <div className="space-y-6">
       <FormSection
@@ -163,13 +172,13 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
           control={control}
           name="type"
           render={({ field }) => (
-            <Tabs 
-              value={field.value || ''} 
-              onValueChange={(value) => field.onChange(value as 'link' | 'upload' | 'text')}
+            <Tabs
+              value={field.value || ""}
+              onValueChange={value => field.onChange(value as "link" | "upload" | "text")}
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-3">
-                {getSourceTypes(t).map((type) => {
+                {getSourceTypes(t).map(type => {
                   const Icon = type.icon
                   return (
                     <TabsTrigger key={type.value} value={type.value} className="gap-2">
@@ -179,69 +188,70 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                   )
                 })}
               </TabsList>
-              
-              {getSourceTypes(t).map((type) => (
+
+              {getSourceTypes(t).map(type => (
                 <TabsContent key={type.value} value={type.value} className="mt-4">
-                  <p className="text-sm text-muted-foreground mb-4">{type.description}</p>
-                  
-                  {/* Type-specific fields */}
-                  {type.value === 'link' && (
+                  <p className="mb-4 text-sm text-muted-foreground">{type.description}</p>
+
+                  {type.value === "link" && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="mb-2 flex items-center justify-between">
                         <Label htmlFor="url">{t.sources.urlLabel}</Label>
                         {urlCount > 0 && (
                           <Badge variant={isOverLimit ? "destructive" : "secondary"}>
-                            {t.sources.urlsCount.replace('{count}', urlCount.toString())}
-                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', MAX_BATCH_SIZE.toString())})`}
+                            {t.sources.urlsCount.replace("{count}", urlCount.toString())}
+                            {isOverLimit &&
+                              ` (${t.sources.maxItems.replace("{count}", MAX_BATCH_SIZE.toString())})`}
                           </Badge>
                         )}
                       </div>
                       <Textarea
                         id="url"
-                        {...register('url', {
-                          onChange: () => onClearUrlErrors?.()
+                        {...register("url", {
+                          onChange: () => onClearUrlErrors?.(),
                         })}
                         placeholder={t.sources.enterUrlsPlaceholder}
                         rows={urlCount > 1 ? 6 : 2}
                         className="font-mono text-sm"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {t.sources.batchUrlHint}
                       </p>
                       {errors.url && (
-                        <p className="text-sm text-destructive mt-1">{errors.url.message}</p>
+                        <p className="mt-1 text-sm text-destructive">{errors.url.message}</p>
                       )}
                       {urlValidationErrors && urlValidationErrors.length > 0 && (
-                        <div className="mt-2 p-3 bg-destructive/10 rounded-md border border-destructive/20">
-                          <p className="text-sm font-medium text-destructive mb-2">
+                        <div className="mt-2 rounded-md border border-destructive/20 bg-destructive/10 p-3">
+                          <p className="mb-2 text-sm font-medium text-destructive">
                             {t.sources.invalidUrlsDetected}
                           </p>
                           <ul className="space-y-1">
                             {urlValidationErrors.map((error, idx) => (
-                              <li key={idx} className="text-xs text-destructive flex items-start gap-2">
-                                <span className="font-mono bg-destructive/20 px-1 rounded">
-                                  {t.sources.lineLabel.replace('{line}', error.line.toString())}
+                              <li key={idx} className="flex items-start gap-2 text-xs text-destructive">
+                                <span className="rounded bg-destructive/20 px-1 font-mono">
+                                  {t.sources.lineLabel.replace("{line}", error.line.toString())}
                                 </span>
                                 <span className="truncate">{error.url}</span>
                               </li>
                             ))}
                           </ul>
-                          <p className="text-xs text-muted-foreground mt-2">
+                          <p className="mt-2 text-xs text-muted-foreground">
                             {t.sources.fixInvalidUrls}
                           </p>
                         </div>
                       )}
                     </div>
                   )}
-                  
-                  {type.value === 'upload' && (
+
+                  {type.value === "upload" && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="mb-2 flex items-center justify-between">
                         <Label htmlFor="file">{t.sources.fileLabel}</Label>
                         {fileCount > 0 && (
                           <Badge variant={isOverLimit ? "destructive" : "secondary"}>
-                            {t.sources.filesCount.replace('{count}', fileCount.toString())}
-                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', MAX_BATCH_SIZE.toString())})`}
+                            {t.sources.filesCount.replace("{count}", fileCount.toString())}
+                            {isOverLimit &&
+                              ` (${t.sources.maxItems.replace("{count}", MAX_BATCH_SIZE.toString())})`}
                           </Badge>
                         )}
                       </div>
@@ -249,59 +259,70 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                         id="file"
                         type="file"
                         multiple
-                        {...register('file')}
-                        accept=".pdf,.doc,.docx,.pptx,.ppt,.xlsx,.xls,.txt,.md,.epub,.mp4,.avi,.mov,.wmv,.mp3,.wav,.m4a,.aac,.jpg,.jpeg,.png,.tiff,.zip,.tar,.gz,.html"
+                        {...register("file")}
+                        accept=".pdf,.doc,.docx,.pptx,.ppt,.xlsx,.xls,.txt,.md,.epub,.jpg,.jpeg,.png,.tiff,.zip,.tar,.gz,.html"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {t.sources.selectMultipleFilesHint}
                       </p>
                       {fileCount > 1 && fileInput instanceof FileList && (
-                        <div className="mt-2 p-3 bg-muted rounded-md">
-                          <p className="text-xs font-medium mb-2">{t.sources.selectedFiles}</p>
-                          <ul className="space-y-1 max-h-32 overflow-y-auto">
+                        <div className="mt-2 rounded-md bg-muted p-3">
+                          <p className="mb-2 text-xs font-medium">{t.sources.selectedFiles}</p>
+                          <div className="max-h-32 space-y-1 overflow-y-auto">
                             {Array.from(fileInput).map((file, idx) => (
-                              <li key={idx} className="text-xs text-muted-foreground flex items-center gap-2">
-                                <FileIcon className="h-3 w-3" />
-                                <span className="truncate">{file.name}</span>
-                                <span className="text-muted-foreground/50">
-                                  ({(file.size / 1024).toFixed(1)} KB)
-                                </span>
-                              </li>
+                              <div key={`${file.name}-${idx}`} className="text-xs text-muted-foreground">
+                                {file.name}
+                              </div>
                             ))}
-                          </ul>
+                          </div>
                         </div>
                       )}
-                      {errors.file && (
-                        <p className="text-sm text-destructive mt-1">{errors.file.message}</p>
-                      )}
-                      {isOverLimit && selectedType === 'upload' && (
-                        <p className="text-sm text-destructive mt-1">
-                          {t.sources.maxFilesAllowed.replace('{count}', MAX_BATCH_SIZE.toString())}
+                      {isBatchMode && !isOverLimit && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {selectedType === "upload"
+                            ? t.sources.batchFilesHint.replace("{count}", fileCount.toString())
+                            : t.sources.batchUrlHint}
                         </p>
+                      )}
+                      {errors.file && (
+                        <p className="mt-1 text-sm text-destructive">{String(errors.file.message)}</p>
                       )}
                     </div>
                   )}
-                  
-                  {type.value === 'text' && (
-                    <div>
-                      <Label htmlFor="content" className="mb-2 block">{t.sources.textContentLabel}</Label>
-                      {hasHtmlContent && (
-                        <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
-                          <p className="text-sm text-blue-700 dark:text-blue-300">
-                            {t.sources.htmlDetected}
+
+                  {type.value === "text" && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="title">{t.sources.title}</Label>
+                        <Input
+                          id="title"
+                          {...register("title")}
+                          placeholder={t.sources.titlePlaceholder}
+                          className="mt-2"
+                        />
+                        {errors.title && (
+                          <p className="mt-1 text-sm text-destructive">{errors.title.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="content">{t.sources.content}</Label>
+                        <Textarea
+                          id="content"
+                          {...register("content")}
+                          placeholder={t.sources.contentPlaceholder}
+                          rows={10}
+                          className="mt-2"
+                          onPaste={handleTextPaste}
+                        />
+                        <div className="mt-1 flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">
+                            {hasHtmlContent ? t.sources.htmlPreserved : t.sources.htmlPasteHint}
                           </p>
                         </div>
-                      )}
-                      <Textarea
-                        id="content"
-                        {...register('content')}
-                        placeholder={t.sources.textPlaceholder}
-                        rows={6}
-                        onPaste={handleTextPaste}
-                      />
-                      {errors.content && (
-                        <p className="text-sm text-destructive mt-1">{errors.content.message}</p>
-                      )}
+                        {errors.content && (
+                          <p className="mt-1 text-sm text-destructive">{errors.content.message}</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </TabsContent>
@@ -309,48 +330,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
             </Tabs>
           )}
         />
-        {errors.type && (
-          <p className="text-sm text-destructive mt-1">{errors.type.message}</p>
-        )}
       </FormSection>
-
-      {/* Hide title field in batch mode - titles will be auto-generated */}
-      {!isBatchMode && (
-        <FormSection
-          htmlFor="source-title"
-          title={selectedType === 'text' ? `${t.common.title} *` : `${t.common.title} (${t.common.optional})`}
-          description={selectedType === 'text'
-            ? t.sources.titleRequired
-            : t.sources.titleGenerated
-          }
-        >
-          <Input
-            id="source-title"
-            {...register('title')}
-            placeholder={t.sources.titlePlaceholder}
-            autoComplete="off"
-          />
-          {errors.title && (
-            <p className="text-sm text-destructive mt-1">{errors.title.message}</p>
-          )}
-        </FormSection>
-      )}
-
-      {/* Batch mode indicator */}
-      {isBatchMode && (
-        <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <Badge variant="default">{t.common.batchMode}</Badge>
-            <span className="text-sm font-medium">
-              {t.sources.batchCount.replace('{count}', itemCount.toString()).replace('{type}', selectedType === 'link' ? t.sources.addUrl : t.sources.uploadFile)}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t.sources.batchTitlesAuto}
-            {t.sources.batchCommonSettings}
-          </p>
-        </div>
-      )}
     </div>
   )
 }
