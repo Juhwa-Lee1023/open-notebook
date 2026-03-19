@@ -19,6 +19,7 @@ async def get_settings():
             default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
             default_content_processing_engine_url="simple",
             default_embedding_option=settings.default_embedding_option,
+            internal_connector_embedding_option=settings.internal_connector_embedding_option,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
             internal_proxy_enabled=settings.internal_proxy_enabled,
@@ -72,6 +73,13 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.default_embedding_option = cast(
                 Literal["ask", "always", "never"],
                 settings_update.default_embedding_option,
+            )
+        if settings_update.internal_connector_embedding_option is not None:
+            from typing import Literal, cast
+
+            settings.internal_connector_embedding_option = cast(
+                Literal["ask", "always", "never"],
+                settings_update.internal_connector_embedding_option,
             )
         if settings_update.auto_delete_files is not None:
             from typing import Literal, cast
@@ -166,6 +174,7 @@ async def update_settings(settings_update: SettingsUpdate):
             default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
             default_content_processing_engine_url="simple",
             default_embedding_option=settings.default_embedding_option,
+            internal_connector_embedding_option=settings.internal_connector_embedding_option,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
             internal_proxy_enabled=settings.internal_proxy_enabled,

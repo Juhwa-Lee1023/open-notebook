@@ -34,7 +34,6 @@ class TransformationState(TypedDict):
 
 
 async def content_process(state: SourceState) -> dict:
-    content_settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
     content_state: Dict[str, Any] = state["content_state"]  # type: ignore[assignment]
 
     if is_restricted_stt_tts_source(content_state.get("file_path")):
@@ -43,21 +42,34 @@ async def content_process(state: SourceState) -> dict:
     if content_state.get("url"):
         connector_result = await resolve_internal_knowledge_url(str(content_state["url"]))
         if connector_result:
+            connector_settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+            connector_embedding_option = (
+                connector_settings.internal_connector_embedding_option or "ask"
+            )
+            effective_embed = state["embed"]
+            if connector_embedding_option == "always":
+                effective_embed = True
+            elif connector_embedding_option == "never":
+                effective_embed = False
+
+            processed_content_state = {
+                **content_state,
+                "title": connector_result.title or content_state.get("title"),
+                "content": connector_result.content,
+                "url_engine": "simple",
+                "output_format": "markdown",
+                "metadata": {
+                    "source_type": connector_result.source_type,
+                    "connector": "internal",
+                    **(connector_result.metadata or {}),
+                },
+            }
             return {
-                "content_state": ProcessSourceState(
-                    **content_state,
-                    title=connector_result.title or content_state.get("title"),
-                    content=connector_result.content,
-                    url_engine="simple",
-                    output_format="markdown",
-                    metadata={
-                        "source_type": connector_result.source_type,
-                        "connector": "internal",
-                        **(connector_result.metadata or {}),
-                    },
-                )
+                "embed": effective_embed,
+                "content_state": ProcessSourceState(**processed_content_state),
             }
 
+    content_settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
     content_state["url_engine"] = (
         content_settings.default_content_processing_engine_url or "simple"
     )

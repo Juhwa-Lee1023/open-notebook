@@ -22,7 +22,7 @@ import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTransformations } from '@/lib/hooks/use-transformations'
 import { useCreateSource } from '@/lib/hooks/use-sources'
 import { useSettings } from '@/lib/hooks/use-settings'
-import { CreateSourceRequest } from '@/lib/types/api'
+import { CreateSourceRequest, SettingsResponse } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 const MAX_BATCH_SIZE = 50
@@ -85,6 +85,44 @@ interface BatchProgress {
   currentItem?: string
 }
 
+type EmbeddingOption = 'ask' | 'always' | 'never'
+
+function isMatchingHost(url: string, baseUrl?: string): boolean {
+  if (!baseUrl) return false
+
+  try {
+    return new URL(url).host === new URL(baseUrl).host
+  } catch {
+    return false
+  }
+}
+
+function isInternalKnowledgeUrl(url: string, settings?: SettingsResponse): boolean {
+  try {
+    const parsedUrl = new URL(url)
+    const path = parsedUrl.pathname.toLowerCase()
+
+    if (isMatchingHost(url, settings?.internal_jira_base_url)) {
+      return true
+    }
+    if (isMatchingHost(url, settings?.internal_confluence_base_url)) {
+      return true
+    }
+
+    if (path.includes('/browse/')) {
+      return true
+    }
+
+    return (
+      path.includes('/display/') ||
+      path.includes('/pages/viewpage.action') ||
+      (path.includes('/spaces/') && path.includes('/pages/'))
+    )
+  } catch {
+    return false
+  }
+}
+
 export function AddSourceDialog({ 
   open, 
   onOpenChange, 
@@ -133,7 +171,7 @@ export function AddSourceDialog({
     resolver: zodResolver(createSourceSchema),
     defaultValues: {
       notebooks: defaultNotebookId ? [defaultNotebookId] : [],
-      embed: settings?.default_embedding_option === 'always' || settings?.default_embedding_option === 'ask',
+      embed: true,
       async_processing: true,
       transformations: [],
     },
@@ -203,8 +241,30 @@ export function AddSourceDialog({
     return { isBatchMode, itemCount, parsedUrls, parsedFiles }
   }, [selectedType, watchedUrl, watchedFile])
 
+  const isInternalKnowledgeSource = useMemo(() => {
+    if (selectedType !== 'link' || parsedUrls.length === 0) {
+      return false
+    }
+
+    return parsedUrls.every((url) => isInternalKnowledgeUrl(url, settings))
+  }, [parsedUrls, selectedType, settings])
+
+  const effectiveEmbeddingOption = useMemo<EmbeddingOption>(() => {
+    if (isInternalKnowledgeSource) {
+      return (settings?.internal_connector_embedding_option as EmbeddingOption | undefined) || 'ask'
+    }
+
+    return (settings?.default_embedding_option as EmbeddingOption | undefined) || 'ask'
+  }, [isInternalKnowledgeSource, settings])
+
   // Check for batch size limit
   const isOverLimit = itemCount > MAX_BATCH_SIZE
+
+  useEffect(() => {
+    const embedValue =
+      effectiveEmbeddingOption === 'always' || effectiveEmbeddingOption === 'ask'
+    setValue('embed', embedValue, { shouldDirty: false, shouldTouch: false })
+  }, [effectiveEmbeddingOption, setValue])
 
   // Step validation - now reactive with watched values
   const isStepValid = (step: number): boolean => {
@@ -576,7 +636,7 @@ export function AddSourceDialog({
                 selectedTransformations={selectedTransformations}
                 onToggleTransformation={handleTransformationToggle}
                 loading={transformationsLoading}
-                settings={settings}
+                embeddingOption={effectiveEmbeddingOption}
               />
             )}
           </WizardContainer>

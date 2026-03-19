@@ -122,7 +122,8 @@ async def process_source_command(
         insights_created = len(insights_list)
 
         processing_time = time.time() - start_time
-        embed_status = "submitted" if input_data.embed else "skipped"
+        effective_embed = bool(result.get("embed", input_data.embed))
+        embed_status = "submitted" if effective_embed else "skipped"
         logger.info(
             f"Successfully processed source: {processed_source.id} in {processing_time:.2f}s"
         )

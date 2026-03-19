@@ -6,7 +6,6 @@ import { FormSection } from "@/components/ui/form-section"
 import { CheckboxList } from "@/components/ui/checkbox-list"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Transformation } from "@/lib/types/transformations"
-import { SettingsResponse } from "@/lib/types/api"
 
 interface CreateSourceFormData {
   type: 'link' | 'upload' | 'text'
@@ -26,7 +25,7 @@ interface ProcessingStepProps {
   selectedTransformations: string[]
   onToggleTransformation: (transformationId: string) => void
   loading?: boolean
-  settings?: SettingsResponse
+  embeddingOption: 'ask' | 'always' | 'never'
 }
 
 export function ProcessingStep({
@@ -35,7 +34,7 @@ export function ProcessingStep({
   selectedTransformations,
   onToggleTransformation,
   loading = false,
-  settings
+  embeddingOption
 }: ProcessingStepProps) {
   const { t } = useTranslation()
   const transformationItems = transformations.map((transformation) => ({
@@ -64,7 +63,7 @@ export function ProcessingStep({
         description={t.sources.processDescription}
       >
         <div className="space-y-4">
-          {settings?.default_embedding_option === 'ask' && (
+          {embeddingOption === 'ask' && (
             <Controller
               control={control}
               name="embed"
@@ -90,7 +89,7 @@ export function ProcessingStep({
             />
           )}
 
-          {settings?.default_embedding_option === 'always' && (
+          {embeddingOption === 'always' && (
             <div className="p-3 rounded-md bg-primary/10 border border-primary/30">
               <div className="flex items-start gap-3">
                 <div className="w-4 h-4 bg-primary rounded-full mt-0.5 flex-shrink-0"></div>
@@ -105,7 +104,7 @@ export function ProcessingStep({
             </div>
           )}
 
-          {settings?.default_embedding_option === 'never' && (
+          {embeddingOption === 'never' && (
             <div className="p-3 rounded-md bg-muted border border-border">
               <div className="flex items-start gap-3">
                 <div className="w-4 h-4 bg-muted-foreground rounded-full mt-0.5 flex-shrink-0"></div>

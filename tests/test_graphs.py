@@ -6,10 +6,13 @@ without heavy mocking of the actual processing logic.
 """
 
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from open_notebook.graphs.prompt import PatternChainState, graph
+from open_notebook.graphs.source import content_process
 from open_notebook.graphs.tools import get_current_timestamp
 from open_notebook.graphs.transformation import (
     TransformationState,
@@ -149,6 +152,86 @@ class TestTransformationGraph:
         assert transformation_graph is not None
         assert hasattr(transformation_graph, "invoke")
         assert hasattr(transformation_graph, "ainvoke")
+
+
+class TestSourceGraph:
+    """Test suite for source graph workflows."""
+
+    @pytest.mark.asyncio
+    async def test_internal_knowledge_sources_respect_ask_embedding_option(self, monkeypatch):
+        """Ask mode should preserve the user's embed choice for Jira/Confluence imports."""
+        connector_result = MagicMock()
+        connector_result.title = "Jira issue"
+        connector_result.content = "Imported Jira content"
+        connector_result.source_type = "jira"
+        connector_result.metadata = {"issue_key": "LOCKER-1"}
+
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.resolve_internal_knowledge_url",
+            AsyncMock(return_value=connector_result),
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.ContentSettings.get_instance",
+            AsyncMock(
+                return_value=SimpleNamespace(internal_connector_embedding_option="ask")
+            ),
+        )
+
+        state = {
+            "content_state": {
+                "url": "https://jira.example.com/browse/LOCKER-1",
+                "title": "Original title",
+                "file_path": "",
+            },
+            "apply_transformations": [],
+            "source_id": "source:test",
+            "notebook_ids": [],
+            "embed": False,
+        }
+
+        result = await content_process(state)
+
+        assert result["embed"] is False
+        assert result["content_state"].content == "Imported Jira content"
+        assert result["content_state"].metadata["connector"] == "internal"
+        assert result["content_state"].metadata["source_type"] == "jira"
+
+    @pytest.mark.asyncio
+    async def test_internal_knowledge_sources_force_embedding_when_always(self, monkeypatch):
+        """Always mode should force embedding for Jira/Confluence imports."""
+        connector_result = MagicMock()
+        connector_result.title = "Wiki page"
+        connector_result.content = "Imported wiki content"
+        connector_result.source_type = "confluence"
+        connector_result.metadata = {"page_id": "1234"}
+
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.resolve_internal_knowledge_url",
+            AsyncMock(return_value=connector_result),
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.ContentSettings.get_instance",
+            AsyncMock(
+                return_value=SimpleNamespace(internal_connector_embedding_option="always")
+            ),
+        )
+
+        state = {
+            "content_state": {
+                "url": "https://wiki.example.com/display/LOCKER/Page",
+                "title": "Original title",
+                "file_path": "",
+            },
+            "apply_transformations": [],
+            "source_id": "source:test",
+            "notebook_ids": [],
+            "embed": False,
+        }
+
+        result = await content_process(state)
+
+        assert result["embed"] is True
+        assert result["content_state"].metadata["source_type"] == "confluence"
 
 
 if __name__ == "__main__":

@@ -16,6 +16,12 @@ class ContentSettings(RecordModel):
     default_embedding_option: Optional[Literal["ask", "always", "never"]] = Field(
         "ask", description="Default Embedding Option for Vector Search"
     )
+    internal_connector_embedding_option: Optional[
+        Literal["ask", "always", "never"]
+    ] = Field(
+        "ask",
+        description="Default Embedding Option for Jira/Confluence internal connectors",
+    )
     auto_delete_files: Optional[Literal["yes", "no"]] = Field(
         "yes", description="Auto Delete Uploaded Files"
     )

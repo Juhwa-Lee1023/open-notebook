@@ -20,6 +20,7 @@ const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
   default_content_processing_engine_url: z.enum(['simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
+  internal_connector_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
   internal_proxy_enabled: z.enum(['yes', 'no']).optional(),
   internal_proxy_url: z.string().optional(),
@@ -67,6 +68,7 @@ export function SettingsForm() {
       default_content_processing_engine_doc: undefined,
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
+      internal_connector_embedding_option: undefined,
       auto_delete_files: undefined,
       internal_proxy_enabled: undefined,
       internal_proxy_url: undefined,
@@ -99,6 +101,8 @@ export function SettingsForm() {
         default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
         default_content_processing_engine_url: 'simple' as const,
         default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
+        internal_connector_embedding_option:
+          (settings.internal_connector_embedding_option as 'ask' | 'always' | 'never') || 'ask',
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
         internal_proxy_enabled: (settings.internal_proxy_enabled as 'yes' | 'no') || 'no',
         internal_proxy_url: settings.internal_proxy_url || '',
@@ -227,7 +231,7 @@ export function SettingsForm() {
         </CardHeader>
         <CardContent className="space-y-6">
            <div className="space-y-3">
-            <Label htmlFor="embedding">{t.settings.defaultEmbeddingOption}</Label>
+            <Label htmlFor="embedding">일반 소스 추가 시 기본 임베딩 옵션</Label>
             <Controller
               name="default_embedding_option"
               control={control}
@@ -259,6 +263,35 @@ export function SettingsForm() {
                 <p>{t.settings.embeddingHelp}</p>
               </CollapsibleContent>
             </Collapsible>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="internal_connector_embedding">Jira/Confluence 연동 시 자동 임베딩 옵션</Label>
+            <Controller
+              name="internal_connector_embedding_option"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  key={field.value}
+                  name={field.name}
+                  value={field.value || ''}
+                  onValueChange={field.onChange}
+                  disabled={field.disabled || isLoading}
+                >
+                  <SelectTrigger id="internal_connector_embedding" className="w-full">
+                    <SelectValue placeholder={t.settings.embeddingOptionPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ask">{t.settings.ask}</SelectItem>
+                    <SelectItem value="always">{t.settings.always}</SelectItem>
+                    <SelectItem value="never">{t.settings.never}</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-sm text-muted-foreground">
+              Jira/Confluence URL을 추가할 때 적용됩니다. ask로 두면 추가할 때마다 임베딩 체크 여부를 직접 선택합니다.
+            </p>
           </div>
         </CardContent>
       </Card>
