@@ -10,6 +10,57 @@ import {
   UpdateSourceRequest 
 } from '@/lib/types/api'
 
+function getStoredAuthToken(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const authStorage = localStorage.getItem('auth-storage')
+  if (!authStorage) {
+    return null
+  }
+
+  try {
+    const { state } = JSON.parse(authStorage)
+    return state?.token ?? null
+  } catch {
+    return null
+  }
+}
+
+async function uploadFileViaFrontendProxy(formData: FormData): Promise<SourceResponse> {
+  const headers = new Headers()
+  const token = getStoredAuthToken()
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch('/upload-source', {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  const contentType = response.headers.get('content-type') || ''
+  const payload = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text()
+
+  if (!response.ok) {
+    const detail =
+      typeof payload === 'object' && payload !== null && 'detail' in payload
+        ? String(payload.detail)
+        : typeof payload === 'string'
+          ? payload
+          : `Upload failed with status ${response.status}`
+
+    throw new Error(detail)
+  }
+
+  return payload as SourceResponse
+}
+
 export const sourcesApi = {
   list: async (params?: {
     notebook_id?: string
@@ -63,7 +114,11 @@ export const sourcesApi = {
     formData.append('embed', String(data.embed ?? false))
     formData.append('delete_source', String(data.delete_source ?? false))
     formData.append('async_processing', String(data.async_processing ?? false))
-    
+
+    if (dataWithFile.file instanceof File) {
+      return uploadFileViaFrontendProxy(formData)
+    }
+
     const response = await apiClient.post<SourceResponse>('/sources', formData)
     return response.data
   },
@@ -88,13 +143,8 @@ export const sourcesApi = {
     formData.append('notebook_id', notebook_id)
     formData.append('type', 'upload')
     formData.append('async_processing', 'true')
-    
-    const response = await apiClient.post<SourceResponse>('/sources', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
-    return response.data
+
+    return uploadFileViaFrontendProxy(formData)
   },
 
   retry: async (id: string) => {
